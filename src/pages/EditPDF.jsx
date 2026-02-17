@@ -1,5 +1,5 @@
 // src/pages/EditPDF.jsx
-// LATEST FULL VERSION - ZERO OMISSIONS - ALL REQUESTED FEATURES ADDED
+// LATEST FULL VERSION - ZERO OMISSIONS - ALL FEATURES ADDED (Feb 17 2026)
 import React, { useState, useEffect, useCallback } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -8,7 +8,7 @@ import { createPageUrl } from '@/utils';
 import PDFCanvas from '@/components/pdf/PDFCanvas';
 import EditToolbar from '@/components/pdf/EditToolbar';
 
-// Vite-compatible worker
+// Vite + Vercel compatible worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.js',
   import.meta.url
@@ -27,9 +27,9 @@ export default function EditPDF() {
   const [history, setHistory] = useState([{}]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [showToolbar, setShowToolbar] = useState(true);
-  const [isPinned, setIsPinned] = useState(false);        // NEW: toolbar pin
-  const [currentFont, setCurrentFont] = useState('Arial'); // NEW: font selector
-  const [thumbnails, setThumbnails] = useState([]);       // NEW: thumbnails
+  const [isPinned, setIsPinned] = useState(false);           // NEW: pin button
+  const [currentFont, setCurrentFont] = useState('Arial');   // NEW: font selector
+  const [thumbnails, setThumbnails] = useState([]);          // NEW: thumbnails
 
   // ==================== LOAD PDF ====================
   useEffect(() => {
@@ -41,23 +41,28 @@ export default function EditPDF() {
       setPdfBytes(bytes);
       loadPdfInfo(bytes);
     } catch (err) {
-      console.error(err);
+      console.error('Storage error:', err);
     }
   }, []);
 
   const loadPdfInfo = async (bytes) => {
-    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
-    setTotalPages(pdf.numPages);
-    setRotations(new Array(pdf.numPages).fill(0));
-    generateThumbnails(pdf); // NEW: generate thumbnails
+    try {
+      const fresh = new Uint8Array(bytes);
+      const pdf = await pdfjsLib.getDocument({ data: fresh }).promise;
+      setTotalPages(pdf.numPages);
+      setRotations(new Array(pdf.numPages).fill(0));
+      generateThumbnails(pdf);
+    } catch (err) {
+      console.error('PDF load error:', err);
+    }
   };
 
-  // ==================== NEW: THUMBNAILS ====================
+  // ==================== THUMBNAILS (with scrollbar) ====================
   const generateThumbnails = async (pdf) => {
     const thumbs = [];
     for (let i = 1; i <= pdf.numPages; i++) {
       const page = await pdf.getPage(i);
-      const viewport = page.getViewport({ scale: 0.2 });
+      const viewport = page.getViewport({ scale: 0.25 });
       const canvas = document.createElement('canvas');
       canvas.width = viewport.width;
       canvas.height = viewport.height;
@@ -73,7 +78,7 @@ export default function EditPDF() {
     await loadPdfInfo(newBytes);
   };
 
-  // ==================== PAGE OPERATIONS (unchanged except rotation fix) ====================
+  // ==================== PAGE OPERATIONS ====================
   const handleAddBlankPage = async () => {
     if (!pdfBytes) return;
     const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -149,7 +154,7 @@ export default function EditPDF() {
     }
   };
 
-  // ==================== SAVE (unchanged) ====================
+  // ==================== SAVE ====================
   const handleSave = async () => {
     if (!pdfBytes) return alert('No PDF loaded');
     try {
@@ -228,57 +233,42 @@ export default function EditPDF() {
 
   return (
     <div className="h-screen flex bg-zinc-950 overflow-hidden relative" onMouseMove={handleMouseMove}>
-      {/* NEW: Thumbnail Sidebar */}
-      <div className="w-48 bg-zinc-900 border-r border-zinc-800 overflow-auto p-2 flex flex-col gap-2">
+      {/* Thumbnail Sidebar with scrollbar */}
+      <div className="w-56 bg-zinc-900 border-r border-zinc-800 overflow-auto p-3 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-zinc-700">
         {thumbnails.map((thumb, idx) => (
           <div
             key={idx}
             onClick={() => setCurrentPage(idx + 1)}
-            className={`cursor-pointer border-2 rounded ${currentPage === idx + 1 ? 'border-indigo-600' : 'border-transparent'} overflow-hidden`}
+            className={`cursor-pointer border-2 rounded overflow-hidden transition-all ${currentPage === idx + 1 ? 'border-indigo-600 scale-105' : 'border-transparent hover:border-zinc-600'}`}
           >
             <img src={thumb} alt={`Page ${idx + 1}`} className="w-full" />
-            <div className="text-center text-xs text-zinc-400 py-1">Page {idx + 1}</div>
+            <div className="text-center text-xs text-zinc-400 py-1 bg-zinc-800">Page {idx + 1}</div>
           </div>
         ))}
       </div>
 
-      {/* Main Content */}
+      {/* Main Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Toolbar with NEW pin button and font selector */}
-        <div className={`transition-transform duration-300 ${isPinned || showToolbar ? 'translate-y-0' : '-translate-y-full'} fixed inset-x-0 top-0 z-50`}>
+        {/* Toolbar (with pin & font) */}
+        <div className={`fixed inset-x-0 top-0 z-50 transition-transform duration-300 ${isPinned || showToolbar ? 'translate-y-0' : '-translate-y-full'}`}>
           <EditToolbar
-            currentTool={currentTool}
-            onToolChange={setCurrentTool}
-            color={color}
-            onColorChange={setColor}
-            brushSize={brushSize}
-            onBrushSizeChange={setBrushSize}
-            zoom={zoom}
-            onZoomIn={handleZoomIn}
-            onZoomOut={handleZoomOut}
-            currentPage={currentPage}
-            totalPages={totalPages}
-            onPageChange={setCurrentPage}
-            onRotateLeft={() => handleRotatePage('left')}
-            onRotateRight={() => handleRotatePage('right')}
-            onAddBlank={handleAddBlankPage}
-            onDelete={handleDeleteCurrentPage}
-            canUndo={historyIndex > 0}
-            canRedo={historyIndex < history.length - 1}
-            onUndo={handleUndo}
-            onRedo={handleRedo}
-            onSave={handleSave}
-            onBack={handleBack}
-            // NEW props
-            isPinned={isPinned}
-            onPinToggle={() => setIsPinned(!isPinned)}
-            currentFont={currentFont}
-            onFontChange={setCurrentFont}
+            currentTool={currentTool} onToolChange={setCurrentTool}
+            color={color} onColorChange={setColor}
+            brushSize={brushSize} onBrushSizeChange={setBrushSize}
+            zoom={zoom} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut}
+            currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage}
+            onRotateLeft={() => handleRotatePage('left')} onRotateRight={() => handleRotatePage('right')}
+            onAddBlank={handleAddBlankPage} onDelete={handleDeleteCurrentPage}
+            canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
+            onUndo={handleUndo} onRedo={handleRedo} onSave={handleSave} onBack={handleBack}
+            // NEW FEATURES
+            isPinned={isPinned} onPinToggle={() => setIsPinned(!isPinned)}
+            currentFont={currentFont} onFontChange={setCurrentFont}
           />
         </div>
 
         {/* PDF Viewer */}
-        <div className="flex-1 flex items-center justify-center overflow-auto p-6 pt-24 bg-zinc-900">
+        <div className="flex-1 flex items-center justify-center overflow-auto p-8 pt-24 bg-zinc-900">
           <PDFCanvas
             pdfBytes={pdfBytes}
             pageNumber={currentPage}
@@ -290,7 +280,7 @@ export default function EditPDF() {
             annotations={pageAnnotations[currentPage] || []}
             onAnnotationAdd={handleAnnotationAdd}
             onAnnotationEdit={handleAnnotationEdit}
-            currentFont={currentFont}   // NEW: pass font to canvas
+            currentFont={currentFont}
           />
         </div>
       </div>
