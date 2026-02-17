@@ -1,135 +1,164 @@
-import React, { useRef, useEffect, useState, forwardRef, useCallback } from 'react';
+// src/components/pdf/PDFCanvas.jsx
+import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
-const PDFCanvas = forwardRef(({
-    pdfBytes, pageNumber, tool, color, brushSize, zoom, rotation,
-    annotations, onAnnotationAdd, onAnnotationEdit
-}, ref) => {
-    const pdfCanvasRef = useRef(null);
-    const drawCanvasRef = useRef(null);
-    const [isDrawing, setIsDrawing] = useState(false);
-    const [currentPath, setCurrentPath] = useState([]);
+export default function PDFCanvas({
+  pdfBytes,
+  pageNumber = 1,
+  tool,
+  color,
+  brushSize,
+  zoom = 1.2,
+  rotation = 0,
+  annotations = [],
+  onAnnotationAdd,
+  onAnnotationEdit,
+}) {
+  const pdfCanvasRef = useRef(null);
+  const drawCanvasRef = useRef(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [currentPath, setCurrentPath] = useState([]);
 
-    // Render PDF + annotations
-    useEffect(() => {
-        if (!pdfBytes || !pageNumber) return;
-        const renderPDF = async () => {
-            const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
-            const page = await pdf.getPage(pageNumber);
-            const viewport = page.getViewport({ scale: zoom, rotation });
+  useEffect(() => {
+    if (!pdfBytes || pageNumber < 1) return;
 
-            const pdfCanvas = pdfCanvasRef.current;
-            const drawCanvas = drawCanvasRef.current;
-            pdfCanvas.width = viewport.width;
-            pdfCanvas.height = viewport.height;
-            drawCanvas.width = viewport.width;
-            drawCanvas.height = viewport.height;
+    const renderPage = async () => {
+      try {
+        const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+        const page = await pdf.getPage(pageNumber);
+        const viewport = page.getViewport({ scale: zoom, rotation });
 
-            await page.render({ canvasContext: pdfCanvas.getContext('2d'), viewport }).promise;
-            redrawAnnotations();
-        };
-        renderPDF();
-    }, [pdfBytes, pageNumber, zoom, rotation]);
+        const pdfCanvas = pdfCanvasRef.current;
+        if (!pdfCanvas) return;
 
-    const redrawAnnotations = useCallback(() => {
-        const ctx = drawCanvasRef.current?.getContext('2d');
-        if (!ctx) return;
-        ctx.clearRect(0, 0, drawCanvasRef.current.width, drawCanvasRef.current.height);
+        pdfCanvas.width = viewport.width;
+        pdfCanvas.height = viewport.height;
 
-        annotations.forEach((ann, idx) => {
-            ctx.strokeStyle = ann.color || '#000000';
-            ctx.lineWidth = ann.brushSize || brushSize;
-            ctx.lineCap = 'round';
-            if (ann.type === 'highlight') ctx.globalAlpha = 0.35;
+        if (drawCanvasRef.current) {
+          drawCanvasRef.current.width = viewport.width;
+          drawCanvasRef.current.height = viewport.height;
+        }
 
-            if (ann.points) {
-                ctx.beginPath();
-                ctx.moveTo(ann.points[0].x, ann.points[0].y);
-                ann.points.forEach(p => ctx.lineTo(p.x, p.y));
-                ctx.stroke();
-            } else if (ann.type === 'text') {
-                ctx.font = `${ann.fontSize || 24}px Arial`;
-                ctx.fillStyle = ann.color;
-                ctx.fillText(ann.text, ann.x, ann.y);
-            }
-            ctx.globalAlpha = 1;
-        });
-    }, [annotations, brushSize]);
+        const ctx = pdfCanvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
 
-    useEffect(() => { redrawAnnotations(); }, [redrawAnnotations]);
-
-    const getCoords = (e) => {
-        const rect = drawCanvasRef.current.getBoundingClientRect();
-        const scaleX = drawCanvasRef.current.width / rect.width;
-        return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleX };
+        redrawAnnotations();
+      } catch (err) {
+        console.error('Page render error:', err);
+      }
     };
 
-    const handleMouseDown = (e) => {
-        const coords = getCoords(e);
-        if (tool === 'text') {
-            const text = prompt('Enter text to add:') || '';
-            if (text) onAnnotationAdd({ type: 'text', text, x: coords.x, y: coords.y, color, fontSize: brushSize * 3 });
-            return;
-        }
-        if (tool === 'select') {
-            // Click to edit text
-            annotations.forEach((ann, i) => {
-                if (ann.type === 'text' && Math.hypot(ann.x - coords.x, ann.y - coords.y) < 50) {
-                    const newText = prompt('Edit text:', ann.text);
-                    if (newText !== null) onAnnotationEdit(i, newText);
-                }
-            });
-            return;
-        }
-        setIsDrawing(true);
-        setCurrentPath([coords]);
-    };
+    renderPage();
+  }, [pdfBytes, pageNumber, zoom, rotation]);
 
-    const handleMouseMove = (e) => {
-        if (!isDrawing) return;
-        const coords = getCoords(e);
-        const newPath = [...currentPath, coords];
-        setCurrentPath(newPath);
+  const redrawAnnotations = useCallback(() => {
+    const canvas = drawCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        const ctx = drawCanvasRef.current.getContext('2d');
-        ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
-        ctx.lineWidth = brushSize;
-        ctx.lineCap = 'round';
+    annotations.forEach((ann) => {
+      ctx.save();
+      ctx.strokeStyle = ann.color || color;
+      ctx.lineWidth = ann.brushSize || brushSize;
+      ctx.lineCap = 'round';
+
+      if (ann.type === 'highlight') ctx.globalAlpha = 0.3;
+
+      if (ann.points && ann.points.length > 1) {
         ctx.beginPath();
-        ctx.moveTo(currentPath[currentPath.length - 1].x, currentPath[currentPath.length - 1].y);
-        ctx.lineTo(coords.x, coords.y);
+        ctx.moveTo(ann.points[0].x, ann.points[0].y);
+        ann.points.forEach((p) => ctx.lineTo(p.x, p.y));
         ctx.stroke();
-    };
+      } else if (ann.type === 'text') {
+        ctx.font = `${ann.fontSize || 20}px Arial`;
+        ctx.fillStyle = ann.color || color;
+        ctx.fillText(ann.text, ann.x, ann.y);
+      }
+      ctx.restore();
+    });
+  }, [annotations, color, brushSize]);
 
-    const handleMouseUp = () => {
-        if (!isDrawing || currentPath.length < 2) {
-            setIsDrawing(false);
-            setCurrentPath([]);
-            return;
+  useEffect(() => {
+    redrawAnnotations();
+  }, [redrawAnnotations]);
+
+  const getCoords = (e) => {
+    const rect = drawCanvasRef.current.getBoundingClientRect();
+    const scale = drawCanvasRef.current.width / rect.width;
+    return {
+      x: (e.clientX - rect.left) * scale,
+      y: (e.clientY - rect.top) * scale,
+    };
+  };
+
+  const handleMouseDown = (e) => {
+    const coords = getCoords(e);
+
+    if (tool === 'text') {
+      const text = prompt('Enter text:')?.trim();
+      if (text) onAnnotationAdd({ type: 'text', text, x: coords.x, y: coords.y, color, fontSize: brushSize * 3.5 });
+      return;
+    }
+
+    if (tool === 'select') {
+      annotations.forEach((ann, i) => {
+        if (ann.type === 'text' && Math.hypot(ann.x - coords.x, ann.y - coords.y) < 60) {
+          const edited = prompt('Edit text:', ann.text);
+          if (edited !== null) onAnnotationEdit(i, edited);
         }
-        onAnnotationAdd({
-            type: tool === 'highlight' ? 'highlight' : tool === 'eraser' ? 'eraser' : 'draw',
-            points: currentPath,
-            color: tool === 'eraser' ? '#ffffff' : color,
-            brushSize
-        });
-        setIsDrawing(false);
-        setCurrentPath([]);
-    };
+      });
+      return;
+    }
 
-    return (
-        <div className="relative shadow-2xl border-8 border-gray-400 bg-white overflow-hidden">
-            <canvas ref={pdfCanvasRef} className="block" />
-            <canvas
-                ref={drawCanvasRef}
-                className="absolute top-0 left-0 pointer-events-auto"
-                onMouseDown={handleMouseDown}
-                onMouseMove={handleMouseMove}
-                onMouseUp={handleMouseUp}
-                onMouseLeave={handleMouseUp}
-            />
-        </div>
-    );
-});
+    setIsDrawing(true);
+    setCurrentPath([coords]);
+  };
 
-export default PDFCanvas;
+  const handleMouseMove = (e) => {
+    if (!isDrawing) return;
+    const coords = getCoords(e);
+    setCurrentPath((prev) => [...prev, coords]);
+
+    const ctx = drawCanvasRef.current.getContext('2d');
+    ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
+    ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(currentPath[currentPath.length - 1]?.x ?? coords.x, currentPath[currentPath.length - 1]?.y ?? coords.y);
+    ctx.lineTo(coords.x, coords.y);
+    ctx.stroke();
+  };
+
+  const handleMouseUp = () => {
+    if (!isDrawing || currentPath.length < 2) {
+      setIsDrawing(false);
+      setCurrentPath([]);
+      return;
+    }
+
+    onAnnotationAdd({
+      type: tool,
+      points: currentPath,
+      color: tool === 'eraser' ? '#ffffff' : color,
+      brushSize,
+    });
+
+    setIsDrawing(false);
+    setCurrentPath([]);
+  };
+
+  return (
+    <div className="relative shadow-2xl border-4 border-gray-600 bg-white mx-auto max-w-[95vw] max-h-[85vh] overflow-hidden">
+      <canvas ref={pdfCanvasRef} className="block" />
+      <canvas
+        ref={drawCanvasRef}
+        className="absolute inset-0 pointer-events-auto touch-none"
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+      />
+    </div>
+  );
+}
