@@ -1,5 +1,5 @@
 // src/pages/EditPDF.jsx
-// LATEST FULL VERSION - ZERO OMISSIONS - ALL FEATURES ADDED (Feb 17 2026)
+// LATEST FULL VERSION - ZERO OMISSIONS - All recent developments included
 import React, { useState, useEffect, useCallback } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -27,9 +27,9 @@ export default function EditPDF() {
   const [history, setHistory] = useState([{}]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [showToolbar, setShowToolbar] = useState(true);
-  const [isPinned, setIsPinned] = useState(false);           // NEW: pin button
-  const [currentFont, setCurrentFont] = useState('Arial');   // NEW: font selector
-  const [thumbnails, setThumbnails] = useState([]);          // NEW: thumbnails
+  const [isPinned, setIsPinned] = useState(false);
+  const [currentFont, setCurrentFont] = useState('Arial');
+  const [thumbnails, setThumbnails] = useState([]);
 
   // ==================== LOAD PDF ====================
   useEffect(() => {
@@ -57,7 +57,7 @@ export default function EditPDF() {
     }
   };
 
-  // ==================== THUMBNAILS (with scrollbar) ====================
+  // ==================== THUMBNAILS WITH SCROLLBAR ====================
   const generateThumbnails = async (pdf) => {
     const thumbs = [];
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -114,8 +114,23 @@ export default function EditPDF() {
   const handleZoomIn = () => setZoom(z => Math.min(3, z + 0.2));
   const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.2));
 
-  // ==================== ANNOTATIONS (text now uses selected font) ====================
+  // ==================== ANNOTATIONS WITH SELECT TOOL DELETION ====================
   const handleAnnotationAdd = useCallback((annotation) => {
+    // NEW: Select tool deletion
+    if (annotation.type === 'delete-text') {
+      const currentAnns = pageAnnotations[currentPage] || [];
+      const newAnns = currentAnns.filter((_, i) => i !== annotation.index);
+      const newAnnotations = { ...pageAnnotations, [currentPage]: newAnns };
+      setPageAnnotations(newAnnotations);
+
+      const newHistory = history.slice(0, historyIndex + 1);
+      newHistory.push(newAnnotations);
+      setHistory(newHistory);
+      setHistoryIndex(newHistory.length - 1);
+      return;
+    }
+
+    // Normal annotation add (text, draw, etc.)
     const newPageAnns = [...(pageAnnotations[currentPage] || []), { ...annotation, font: currentFont }];
     const newAnnotations = { ...pageAnnotations, [currentPage]: newPageAnns };
     setPageAnnotations(newAnnotations);
@@ -233,8 +248,8 @@ export default function EditPDF() {
 
   return (
     <div className="h-screen flex bg-zinc-950 overflow-hidden relative" onMouseMove={handleMouseMove}>
-      {/* Thumbnail Sidebar with scrollbar */}
-      <div className="w-56 bg-zinc-900 border-r border-zinc-800 overflow-auto p-3 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-zinc-700">
+      {/* Thumbnail Sidebar with improved scrollbar */}
+      <div className="w-56 bg-zinc-900 border-r border-zinc-800 overflow-y-auto p-3 flex flex-col gap-3 scrollbar-thin scrollbar-thumb-zinc-600 scrollbar-track-zinc-800">
         {thumbnails.map((thumb, idx) => (
           <div
             key={idx}
@@ -249,7 +264,7 @@ export default function EditPDF() {
 
       {/* Main Area */}
       <div className="flex-1 flex flex-col overflow-hidden">
-        {/* Toolbar (with pin & font) */}
+        {/* Toolbar */}
         <div className={`fixed inset-x-0 top-0 z-50 transition-transform duration-300 ${isPinned || showToolbar ? 'translate-y-0' : '-translate-y-full'}`}>
           <EditToolbar
             currentTool={currentTool} onToolChange={setCurrentTool}
@@ -261,7 +276,6 @@ export default function EditPDF() {
             onAddBlank={handleAddBlankPage} onDelete={handleDeleteCurrentPage}
             canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
             onUndo={handleUndo} onRedo={handleRedo} onSave={handleSave} onBack={handleBack}
-            // NEW FEATURES
             isPinned={isPinned} onPinToggle={() => setIsPinned(!isPinned)}
             currentFont={currentFont} onFontChange={setCurrentFont}
           />
