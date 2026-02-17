@@ -1,5 +1,5 @@
 // src/components/pdf/PDFCanvas.jsx
-// FULL LATEST VERSION - ZERO OMISSIONS - Click-to-type text + font + whiteout + rotation support
+// FULL LATEST VERSION - ZERO OMISSIONS - Click-to-type text + font + whiteout + rotation support + Select tool for deleting text by click
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -25,7 +25,6 @@ export default function PDFCanvas({
   // Render PDF with rotation support
   useEffect(() => {
     if (!pdfBytes || pageNumber < 1) return;
-
     const render = async () => {
       const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
       const page = await pdf.getPage(pageNumber);
@@ -33,7 +32,6 @@ export default function PDFCanvas({
 
       const pdfCanvas = pdfCanvasRef.current;
       const drawCanvas = drawCanvasRef.current;
-
       if (!pdfCanvas || !drawCanvas) return;
 
       pdfCanvas.width = viewport.width;
@@ -93,6 +91,24 @@ export default function PDFCanvas({
 
   const handleMouseDown = (e) => {
     const coords = getCoords(e);
+
+    // NEW: Select tool - click on any text to delete it instantly
+    if (tool === 'select') {
+      for (let i = 0; i < annotations.length; i++) {
+        const ann = annotations[i];
+        if (ann.type === 'text') {
+          const distance = Math.hypot(ann.x - coords.x, ann.y - coords.y);
+          if (distance < 50) { // click tolerance
+            // Remove this annotation
+            const remainingAnnotations = annotations.filter((_, index) => index !== i);
+            // Send delete signal to parent (EditPDF will handle removal)
+            onAnnotationAdd({ type: 'delete-text', index: i });
+            return;
+          }
+        }
+      }
+      return;
+    }
 
     if (tool === 'text') {
       setActiveText({ x: coords.x, y: coords.y, text: '' });
