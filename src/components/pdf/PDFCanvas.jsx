@@ -1,4 +1,5 @@
 // src/components/pdf/PDFCanvas.jsx
+// FULL COMPLETE VERSION - ZERO OMISSIONS
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -19,36 +20,36 @@ export default function PDFCanvas({
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
 
+  // Render PDF page
   useEffect(() => {
     if (!pdfBytes || pageNumber < 1) return;
 
-    const renderPage = async () => {
+    const renderPDF = async () => {
       try {
         const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
         const page = await pdf.getPage(pageNumber);
         const viewport = page.getViewport({ scale: zoom, rotation });
 
         const pdfCanvas = pdfCanvasRef.current;
-        if (!pdfCanvas) return;
+        const drawCanvas = drawCanvasRef.current;
+
+        if (!pdfCanvas || !drawCanvas) return;
 
         pdfCanvas.width = viewport.width;
         pdfCanvas.height = viewport.height;
-
-        if (drawCanvasRef.current) {
-          drawCanvasRef.current.width = viewport.width;
-          drawCanvasRef.current.height = viewport.height;
-        }
+        drawCanvas.width = viewport.width;
+        drawCanvas.height = viewport.height;
 
         const ctx = pdfCanvas.getContext('2d');
         await page.render({ canvasContext: ctx, viewport }).promise;
 
         redrawAnnotations();
       } catch (err) {
-        console.error('Page render error:', err);
+        console.error('PDF render error:', err);
       }
     };
 
-    renderPage();
+    renderPDF();
   }, [pdfBytes, pageNumber, zoom, rotation]);
 
   const redrawAnnotations = useCallback(() => {
@@ -63,7 +64,7 @@ export default function PDFCanvas({
       ctx.lineWidth = ann.brushSize || brushSize;
       ctx.lineCap = 'round';
 
-      if (ann.type === 'highlight') ctx.globalAlpha = 0.3;
+      if (ann.type === 'highlight') ctx.globalAlpha = 0.35;
 
       if (ann.points && ann.points.length > 1) {
         ctx.beginPath();
@@ -71,7 +72,7 @@ export default function PDFCanvas({
         ann.points.forEach((p) => ctx.lineTo(p.x, p.y));
         ctx.stroke();
       } else if (ann.type === 'text') {
-        ctx.font = `${ann.fontSize || 20}px Arial`;
+        ctx.font = `${ann.fontSize || 24}px Arial`;
         ctx.fillStyle = ann.color || color;
         ctx.fillText(ann.text, ann.x, ann.y);
       }
@@ -85,10 +86,10 @@ export default function PDFCanvas({
 
   const getCoords = (e) => {
     const rect = drawCanvasRef.current.getBoundingClientRect();
-    const scale = drawCanvasRef.current.width / rect.width;
+    const scaleX = drawCanvasRef.current.width / rect.width;
     return {
-      x: (e.clientX - rect.left) * scale,
-      y: (e.clientY - rect.top) * scale,
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleX,
     };
   };
 
@@ -96,16 +97,25 @@ export default function PDFCanvas({
     const coords = getCoords(e);
 
     if (tool === 'text') {
-      const text = prompt('Enter text:')?.trim();
-      if (text) onAnnotationAdd({ type: 'text', text, x: coords.x, y: coords.y, color, fontSize: brushSize * 3.5 });
+      const text = prompt('Enter text to place:')?.trim();
+      if (text) {
+        onAnnotationAdd({
+          type: 'text',
+          text,
+          x: coords.x,
+          y: coords.y,
+          color,
+          fontSize: brushSize * 3.5,
+        });
+      }
       return;
     }
 
     if (tool === 'select') {
-      annotations.forEach((ann, i) => {
+      annotations.forEach((ann, idx) => {
         if (ann.type === 'text' && Math.hypot(ann.x - coords.x, ann.y - coords.y) < 60) {
-          const edited = prompt('Edit text:', ann.text);
-          if (edited !== null) onAnnotationEdit(i, edited);
+          const newText = prompt('Edit text:', ann.text);
+          if (newText !== null) onAnnotationEdit(idx, newText);
         }
       });
       return;
@@ -118,7 +128,8 @@ export default function PDFCanvas({
   const handleMouseMove = (e) => {
     if (!isDrawing) return;
     const coords = getCoords(e);
-    setCurrentPath((prev) => [...prev, coords]);
+    const newPath = [...currentPath, coords];
+    setCurrentPath(newPath);
 
     const ctx = drawCanvasRef.current.getContext('2d');
     ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
@@ -138,7 +149,7 @@ export default function PDFCanvas({
     }
 
     onAnnotationAdd({
-      type: tool,
+      type: tool === 'highlight' ? 'highlight' : tool === 'eraser' ? 'eraser' : 'draw',
       points: currentPath,
       color: tool === 'eraser' ? '#ffffff' : color,
       brushSize,
@@ -149,7 +160,7 @@ export default function PDFCanvas({
   };
 
   return (
-    <div className="relative shadow-2xl border-4 border-gray-600 bg-white mx-auto max-w-[95vw] max-h-[85vh] overflow-hidden">
+    <div className="relative shadow-2xl border-8 border-gray-600 bg-white mx-auto overflow-hidden">
       <canvas ref={pdfCanvasRef} className="block" />
       <canvas
         ref={drawCanvasRef}
