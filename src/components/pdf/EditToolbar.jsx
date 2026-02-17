@@ -1,11 +1,11 @@
 // src/components/pdf/EditToolbar.jsx
-// FULL LATEST VERSION - ZERO OMISSIONS - Includes Pin button + Font dropdown
+// FULL LATEST VERSION - ZERO OMISSIONS - Includes Select tool for deleting text by click
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import { 
-  Undo, Redo, ArrowLeft, Save, Plus, Trash2, RotateCcw, RotateCw, 
-  ZoomIn, ZoomOut, PenTool, Highlighter, Eraser, Type, Square, Pin, PinOff 
+import {
+  Undo, Redo, ArrowLeft, Save, Plus, Trash2, RotateCcw, RotateCw,
+  ZoomIn, ZoomOut, PenTool, Highlighter, Eraser, Type, Square, Pin, PinOff
 } from 'lucide-react';
 
 const COLORS = ['#000000', '#ef4444', '#3b82f6', '#10b981', '#eab308', '#8b5cf6'];
@@ -32,7 +32,7 @@ export default function EditToolbar({
         <ArrowLeft className="mr-2 h-5 w-5" /> Back
       </Button>
 
-      {/* Tools */}
+      {/* Tools - Added Select tool for deleting text by click */}
       <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
         <Button variant={currentTool === 'draw' ? 'default' : 'ghost'} size="sm" onClick={() => onToolChange('draw')}>
           <PenTool size={18} />
@@ -48,6 +48,9 @@ export default function EditToolbar({
         </Button>
         <Button variant={currentTool === 'whiteout' ? 'default' : 'ghost'} size="sm" onClick={() => onToolChange('whiteout')}>
           <Square size={18} />
+        </Button>
+        <Button variant={currentTool === 'select' ? 'default' : 'ghost'} size="sm" onClick={() => onToolChange('select')}>
+          ↟
         </Button>
       </div>
 
