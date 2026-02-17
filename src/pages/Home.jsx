@@ -13,7 +13,7 @@ import Toolbar from '@/components/pdf/Toolbar';
 import ConversionPanel from '@/components/pdf/ConversionPanel';
 
 // Set PDF.js worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdn.jsdelivr.net/npm/pdfjs-dist@4.0.379/build/pdf.worker.min.mjs`;
 
 export default function Home() {
     const [pages, setPages] = useState([]);
