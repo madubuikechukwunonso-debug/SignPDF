@@ -1,219 +1,82 @@
 import React from 'react';
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import {
-    Pencil,
-    Highlighter,
-    Type,
-    Eraser,
-    MousePointer,
-    Undo2,
-    Redo2,
-    Download,
-    ChevronLeft,
-    ChevronRight,
-    Palette
-} from 'lucide-react';
-import {
-    Tooltip,
-    TooltipContent,
-    TooltipProvider,
-    TooltipTrigger,
-} from "@/components/ui/tooltip";
-import {
-    Popover,
-    PopoverContent,
-    PopoverTrigger,
-} from "@/components/ui/popover";
+import { Undo, Redo, ArrowLeft, Save, PenTool, Highlighter, Eraser } from 'lucide-react';
 
-const COLORS = [
-    '#000000', '#EF4444', '#F97316', '#EAB308', 
-    '#22C55E', '#3B82F6', '#8B5CF6', '#EC4899'
-];
+const COLORS = ['#000000', '#ef4444', '#3b82f6', '#10b981', '#eab308', '#8b5cf6'];
 
 export default function EditToolbar({
-    currentTool,
-    onToolChange,
-    color,
-    onColorChange,
-    brushSize,
-    onBrushSizeChange,
-    canUndo,
-    canRedo,
-    onUndo,
-    onRedo,
-    onSave,
-    currentPage,
-    totalPages,
-    onPageChange,
-    onBack
+    canUndo, canRedo, onUndo, onRedo, onSave,
+    currentPage, totalPages, onPageChange, onBack,
+    currentTool, onToolChange, color, onColorChange, brushSize, onBrushSizeChange
 }) {
-    const ToolButton = ({ tool, icon: Icon, label }) => (
-        <TooltipProvider delayDuration={200}>
-            <Tooltip>
-                <TooltipTrigger asChild>
-                    <Button
-                        variant={currentTool === tool ? "default" : "ghost"}
-                        size="icon"
-                        onClick={() => onToolChange(tool)}
-                        className={`h-10 w-10 rounded-xl transition-all ${
-                            currentTool === tool 
-                                ? 'bg-indigo-600 text-white hover:bg-indigo-700' 
-                                : 'hover:bg-slate-100'
-                        }`}
-                    >
-                        <Icon className="h-5 w-5" />
-                    </Button>
-                </TooltipTrigger>
-                <TooltipContent side="bottom" className="text-xs">
-                    {label}
-                </TooltipContent>
-            </Tooltip>
-        </TooltipProvider>
-    );
-
     return (
-        <div className="sticky top-0 z-40 bg-white/95 backdrop-blur-xl border-b border-slate-200">
-            <div className="max-w-7xl mx-auto px-4 py-3">
-                <div className="flex items-center justify-between gap-4">
-                    {/* Back Button */}
+        <div className="bg-white border-b p-4 flex items-center justify-between gap-6 flex-wrap shadow">
+            <Button variant="ghost" onClick={onBack} className="flex items-center gap-2">
+                <ArrowLeft size={20} /> Back
+            </Button>
+
+            {/* Tools */}
+            <div className="flex gap-1 bg-gray-100 p-1 rounded-xl">
+                {[
+                    { tool: 'draw', icon: PenTool, label: 'Draw' },
+                    { tool: 'highlight', icon: Highlighter, label: 'Highlight' },
+                    { tool: 'eraser', icon: Eraser, label: 'Erase' }
+                ].map(({ tool, icon: Icon }) => (
                     <Button
-                        variant="ghost"
-                        onClick={onBack}
-                        className="rounded-xl gap-2"
+                        key={tool}
+                        variant={currentTool === tool ? "default" : "ghost"}
+                        size="sm"
+                        onClick={() => onToolChange(tool)}
                     >
-                        <ChevronLeft className="h-4 w-4" />
-                        Back
+                        <Icon size={18} />
                     </Button>
-
-                    {/* Tools */}
-                    <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
-                        <ToolButton tool="select" icon={MousePointer} label="Select" />
-                        <ToolButton tool="draw" icon={Pencil} label="Draw" />
-                        <ToolButton tool="highlight" icon={Highlighter} label="Highlight" />
-                        <ToolButton tool="text" icon={Type} label="Add Text" />
-                        <ToolButton tool="eraser" icon={Eraser} label="Eraser" />
-                    </div>
-
-                    {/* Color & Size */}
-                    <div className="flex items-center gap-3">
-                        <Popover>
-                            <PopoverTrigger asChild>
-                                <Button
-                                    variant="outline"
-                                    size="icon"
-                                    className="h-10 w-10 rounded-xl"
-                                >
-                                    <div 
-                                        className="w-6 h-6 rounded-full border-2 border-white shadow-sm"
-                                        style={{ backgroundColor: color }}
-                                    />
-                                </Button>
-                            </PopoverTrigger>
-                            <PopoverContent className="w-auto p-3">
-                                <div className="grid grid-cols-4 gap-2">
-                                    {COLORS.map((c) => (
-                                        <button
-                                            key={c}
-                                            onClick={() => onColorChange(c)}
-                                            className={`w-8 h-8 rounded-full transition-transform hover:scale-110 ${
-                                                color === c ? 'ring-2 ring-offset-2 ring-indigo-500' : ''
-                                            }`}
-                                            style={{ backgroundColor: c }}
-                                        />
-                                    ))}
-                                </div>
-                            </PopoverContent>
-                        </Popover>
-
-                        <div className="w-24">
-                            <Slider
-                                value={[brushSize]}
-                                onValueChange={([v]) => onBrushSizeChange(v)}
-                                min={1}
-                                max={20}
-                                step={1}
-                                className="w-full"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Undo/Redo */}
-                    <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-xl">
-                        <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={onUndo}
-                                        disabled={!canUndo}
-                                        className="h-10 w-10 rounded-xl disabled:opacity-40"
-                                    >
-                                        <Undo2 className="h-5 w-5" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="text-xs">
-                                    Undo
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                        
-                        <TooltipProvider delayDuration={200}>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={onRedo}
-                                        disabled={!canRedo}
-                                        className="h-10 w-10 rounded-xl disabled:opacity-40"
-                                    >
-                                        <Redo2 className="h-5 w-5" />
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="text-xs">
-                                    Redo
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
-                    </div>
-
-                    {/* Page Navigation */}
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => onPageChange(currentPage - 1)}
-                            disabled={currentPage <= 1}
-                            className="h-8 w-8 rounded-lg"
-                        >
-                            <ChevronLeft className="h-4 w-4" />
-                        </Button>
-                        <span className="text-sm text-slate-600 min-w-[60px] text-center">
-                            {currentPage} / {totalPages}
-                        </span>
-                        <Button
-                            variant="ghost"
-                            size="icon"
-                            onClick={() => onPageChange(currentPage + 1)}
-                            disabled={currentPage >= totalPages}
-                            className="h-8 w-8 rounded-lg"
-                        >
-                            <ChevronRight className="h-4 w-4" />
-                        </Button>
-                    </div>
-
-                    {/* Save */}
-                    <Button
-                        onClick={onSave}
-                        className="rounded-xl gap-2 bg-indigo-600 hover:bg-indigo-700"
-                    >
-                        <Download className="h-4 w-4" />
-                        Save PDF
-                    </Button>
-                </div>
+                ))}
             </div>
+
+            {/* Colors */}
+            <div className="flex gap-2">
+                {COLORS.map(c => (
+                    <button
+                        key={c}
+                        onClick={() => onColorChange(c)}
+                        className={`w-9 h-9 rounded-full border-4 transition-all ${color === c ? 'border-indigo-600 scale-110' : 'border-gray-200'}`}
+                        style={{ backgroundColor: c }}
+                    />
+                ))}
+            </div>
+
+            {/* Brush size */}
+            <div className="flex items-center gap-3 w-56">
+                <span className="text-sm text-gray-500">Size</span>
+                <Slider
+                    value={[brushSize]}
+                    onValueChange={v => onBrushSizeChange(v[0])}
+                    min={1} max={30} step={1}
+                />
+                <span className="font-mono w-8">{brushSize}</span>
+            </div>
+
+            {/* Undo / Redo */}
+            <div className="flex gap-2">
+                <Button variant="outline" onClick={onUndo} disabled={!canUndo}>
+                    <Undo size={18} /> Undo
+                </Button>
+                <Button variant="outline" onClick={onRedo} disabled={!canRedo}>
+                    <Redo size={18} /> Redo
+                </Button>
+            </div>
+
+            {/* Page nav */}
+            <div className="flex items-center gap-3">
+                <Button variant="outline" size="icon" onClick={() => onPageChange(currentPage - 1)} disabled={currentPage <= 1}>←</Button>
+                <span className="font-mono text-lg font-semibold">{currentPage} / {totalPages}</span>
+                <Button variant="outline" size="icon" onClick={() => onPageChange(currentPage + 1)} disabled={currentPage >= totalPages}>→</Button>
+            </div>
+
+            <Button onClick={onSave} className="bg-green-600 hover:bg-green-700 px-8">
+                <Save className="mr-2" /> Save PDF
+            </Button>
         </div>
     );
 }
