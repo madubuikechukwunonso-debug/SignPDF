@@ -1,5 +1,7 @@
 // src/pages/EditPDF.jsx
-// FULL COMPLETE VERSION - FIXED WORKER - ZERO OMISSIONS
+// LATEST FULL VERSION - ZERO OMISSIONS - ALL FIXES INCLUDED
+// Features: detached ArrayBuffer fix, zoom, whiteout tool, click-to-type text, add blank page, auto-hide toolbar
+
 import React, { useState, useEffect, useCallback } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -8,7 +10,7 @@ import { createPageUrl } from '@/utils';
 import PDFCanvas from '@/components/pdf/PDFCanvas';
 import EditToolbar from '@/components/pdf/EditToolbar';
 
-// ✅ FIXED: Vite/React compatible worker (no more .mjs or CDN issues)
+// ✅ Vite + Vercel compatible worker (no more .mjs or detached buffer issues)
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
   'pdfjs-dist/build/pdf.worker.min.js',
   import.meta.url
@@ -21,24 +23,24 @@ export default function EditPDF() {
   const [currentTool, setCurrentTool] = useState('draw');
   const [color, setColor] = useState('#000000');
   const [brushSize, setBrushSize] = useState(5);
-  const [zoom, setZoom] = useState(1.2);
+  const [zoom, setZoom] = useState(1.0);
   const [rotations, setRotations] = useState([]);
   const [pageAnnotations, setPageAnnotations] = useState({});
   const [history, setHistory] = useState([{}]);
   const [historyIndex, setHistoryIndex] = useState(0);
   const [showToolbar, setShowToolbar] = useState(true);
 
-  // ==================== LOAD PDF ====================
+  // ==================== LOAD PDF FROM SESSION STORAGE ====================
   useEffect(() => {
     const stored = sessionStorage.getItem('editPdfBytes');
     if (!stored) {
-      console.error('❌ No editPdfBytes in sessionStorage');
+      console.warn('❌ No PDF found in sessionStorage');
       return;
     }
     try {
       const bytesArray = JSON.parse(stored);
       const bytes = new Uint8Array(bytesArray);
-      console.log('✅ Parsed storage → Uint8Array length:', bytes.length);
+      console.log('✅ Loaded from storage - bytes:', bytes.length);
       setPdfBytes(bytes);
       loadPdfInfo(bytes);
     } catch (err) {
@@ -47,16 +49,18 @@ export default function EditPDF() {
     }
   }, []);
 
+  // ✅ FRESH COPY EVERY TIME (fixes detached ArrayBuffer + "No PDF header found")
   const loadPdfInfo = async (bytes) => {
     try {
-      console.log('🔄 Loading PDF with pdfjs...');
-      const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-      console.log('✅ PDF LOADED SUCCESSFULLY! Pages:', pdf.numPages);
+      const freshBytes = new Uint8Array(bytes);
+      console.log('🔄 Calling getDocument with fresh buffer...');
+      const pdf = await pdfjsLib.getDocument({ data: freshBytes }).promise;
+      console.log('✅ PDF parsed successfully! Pages:', pdf.numPages);
       setTotalPages(pdf.numPages);
       setRotations(new Array(pdf.numPages).fill(0));
     } catch (err) {
       console.error('❌ pdfjs.getDocument FAILED:', err);
-      alert('Could not parse PDF file — open console (F12) to see details');
+      alert('Could not parse PDF file – open console (F12) for details');
     }
   };
 
@@ -70,14 +74,14 @@ export default function EditPDF() {
   const handleAddBlankPage = async () => {
     if (!pdfBytes) return;
     const pdfDoc = await PDFDocument.load(pdfBytes);
-    pdfDoc.addPage([595, 842]);
+    pdfDoc.addPage([595, 842]); // A4
     const newBytes = await pdfDoc.save();
     await updatePdf(newBytes);
     setCurrentPage(totalPages + 1);
   };
 
   const handleDeleteCurrentPage = async () => {
-    if (totalPages <= 1) return alert("Cannot delete the last page");
+    if (totalPages <= 1 || !pdfBytes) return alert("Cannot delete the last page");
     const pdfDoc = await PDFDocument.load(pdfBytes);
     pdfDoc.removePage(currentPage - 1);
     const newBytes = await pdfDoc.save();
@@ -142,7 +146,7 @@ export default function EditPDF() {
     }
   };
 
-  // ==================== SAVE ====================
+  // ==================== SAVE PDF (with fresh buffer) ====================
   const handleSave = async () => {
     if (!pdfBytes) return alert('No PDF loaded');
     try {
@@ -152,7 +156,9 @@ export default function EditPDF() {
         const anns = pageAnnotations[i] || [];
         if (anns.length === 0) continue;
 
-        const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+        // ✅ FRESH COPY FOR EVERY RENDER
+        const freshBytes = new Uint8Array(pdfBytes);
+        const pdf = await pdfjsLib.getDocument({ data: freshBytes }).promise;
         const page = await pdf.getPage(i);
         const viewport = page.getViewport({ scale: 2, rotation: rotations[i - 1] || 0 });
 
@@ -167,7 +173,9 @@ export default function EditPDF() {
           ctx.strokeStyle = ann.color || '#000000';
           ctx.lineWidth = (ann.brushSize || 5) * (2 / 1.5);
           ctx.lineCap = 'round';
+
           if (ann.type === 'highlight') ctx.globalAlpha = 0.35;
+          if (ann.type === 'whiteout') ctx.fillStyle = '#ffffff';
 
           if (ann.points && ann.points.length > 1) {
             ctx.beginPath();
@@ -178,6 +186,8 @@ export default function EditPDF() {
             ctx.font = `${(ann.fontSize || 24) * (2 / 1.5)}px Arial`;
             ctx.fillStyle = ann.color;
             ctx.fillText(ann.text, ann.x * (2 / 1.5), ann.y * (2 / 1.5));
+          } else if (ann.type === 'whiteout') {
+            ctx.fillRect(ann.x * (2 / 1.5), ann.y * (2 / 1.5), ann.width * (2 / 1.5), ann.height * (2 / 1.5));
           }
           ctx.restore();
         });
@@ -200,12 +210,17 @@ export default function EditPDF() {
       alert('✅ PDF saved successfully!');
     } catch (err) {
       console.error('Save failed:', err);
-      alert('Save failed — check console');
+      alert('Save failed – check console (F12)');
     }
   };
 
-  const handleMouseMove = (e) => setShowToolbar(e.clientY < 80);
-  const handleBack = () => window.location.href = createPageUrl('Home');
+  const handleMouseMove = (e) => {
+    setShowToolbar(e.clientY < 80);
+  };
+
+  const handleBack = () => {
+    window.location.href = createPageUrl('Home');
+  };
 
   if (!pdfBytes) {
     return (
@@ -220,20 +235,35 @@ export default function EditPDF() {
       className="h-screen flex flex-col bg-zinc-950 overflow-hidden relative"
       onMouseMove={handleMouseMove}
     >
+      {/* Auto-hide Toolbar */}
       <div className={`fixed inset-x-0 top-0 z-50 transition-transform duration-300 ${showToolbar ? 'translate-y-0' : '-translate-y-full'}`}>
         <EditToolbar
-          currentTool={currentTool} onToolChange={setCurrentTool}
-          color={color} onColorChange={setColor}
-          brushSize={brushSize} onBrushSizeChange={setBrushSize}
-          zoom={zoom} onZoomIn={handleZoomIn} onZoomOut={handleZoomOut}
-          currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage}
-          onRotateLeft={() => handleRotatePage('left')} onRotateRight={() => handleRotatePage('right')}
-          onAddBlank={handleAddBlankPage} onDelete={handleDeleteCurrentPage}
-          canUndo={historyIndex > 0} canRedo={historyIndex < history.length - 1}
-          onUndo={handleUndo} onRedo={handleRedo} onSave={handleSave} onBack={handleBack}
+          currentTool={currentTool}
+          onToolChange={setCurrentTool}
+          color={color}
+          onColorChange={setColor}
+          brushSize={brushSize}
+          onBrushSizeChange={setBrushSize}
+          zoom={zoom}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          onRotateLeft={() => handleRotatePage('left')}
+          onRotateRight={() => handleRotatePage('right')}
+          onAddBlank={handleAddBlankPage}
+          onDelete={handleDeleteCurrentPage}
+          canUndo={historyIndex > 0}
+          canRedo={historyIndex < history.length - 1}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          onSave={handleSave}
+          onBack={handleBack}
         />
       </div>
 
+      {/* PDF Viewer */}
       <div className="flex-1 flex items-center justify-center overflow-auto p-6 pt-24 bg-zinc-900">
         <PDFCanvas
           pdfBytes={pdfBytes}
