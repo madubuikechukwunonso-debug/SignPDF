@@ -5,8 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Upload, ArrowRight } from 'lucide-react';
 
 // Reliable worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs';
-
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.js',import.meta.url).toString();
 export default function Home() {
   const [file, setFile] = useState(null);
   const [loading, setLoading] = useState(false);
