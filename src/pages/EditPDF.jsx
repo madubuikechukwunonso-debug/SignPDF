@@ -1,5 +1,5 @@
 // src/pages/EditPDF.jsx
-// FULL FIXED VERSION - ZERO OMISSIONS
+// FULL COMPLETE VERSION - FIXED WORKER - ZERO OMISSIONS
 import React, { useState, useEffect, useCallback } from 'react';
 import { PDFDocument, degrees } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -8,8 +8,11 @@ import { createPageUrl } from '@/utils';
 import PDFCanvas from '@/components/pdf/PDFCanvas';
 import EditToolbar from '@/components/pdf/EditToolbar';
 
-// ✅ Modern reliable worker (2026)
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@4.7.76/build/pdf.worker.min.mjs';
+// ✅ FIXED: Vite/React compatible worker (no more .mjs or CDN issues)
+pdfjsLib.GlobalWorkerOptions.workerSrc = new URL(
+  'pdfjs-dist/build/pdf.worker.min.js',
+  import.meta.url
+).toString();
 
 export default function EditPDF() {
   const [pdfBytes, setPdfBytes] = useState(null);
@@ -25,7 +28,7 @@ export default function EditPDF() {
   const [historyIndex, setHistoryIndex] = useState(0);
   const [showToolbar, setShowToolbar] = useState(true);
 
-  // Load from sessionStorage with full debug
+  // ==================== LOAD PDF ====================
   useEffect(() => {
     const stored = sessionStorage.getItem('editPdfBytes');
     if (!stored) {
@@ -34,27 +37,26 @@ export default function EditPDF() {
     }
     try {
       const bytesArray = JSON.parse(stored);
-      console.log('✅ Parsed JSON from storage, length:', bytesArray.length);
       const bytes = new Uint8Array(bytesArray);
-      console.log('✅ Created Uint8Array, byte length:', bytes.length);
+      console.log('✅ Parsed storage → Uint8Array length:', bytes.length);
       setPdfBytes(bytes);
       loadPdfInfo(bytes);
     } catch (err) {
-      console.error('❌ JSON parse failed:', err);
+      console.error('❌ Storage parse failed:', err);
       alert('Stored PDF data is corrupted. Please upload again.');
     }
   }, []);
 
   const loadPdfInfo = async (bytes) => {
     try {
-      console.log('🔄 Starting pdfjs.getDocument...');
+      console.log('🔄 Loading PDF with pdfjs...');
       const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
-      console.log('✅ PDF successfully parsed! Pages:', pdf.numPages);
+      console.log('✅ PDF LOADED SUCCESSFULLY! Pages:', pdf.numPages);
       setTotalPages(pdf.numPages);
       setRotations(new Array(pdf.numPages).fill(0));
     } catch (err) {
       console.error('❌ pdfjs.getDocument FAILED:', err);
-      alert('Could not parse PDF file — check console (F12) for details');
+      alert('Could not parse PDF file — open console (F12) to see details');
     }
   };
 
@@ -64,6 +66,7 @@ export default function EditPDF() {
     await loadPdfInfo(newBytes);
   };
 
+  // ==================== PAGE OPERATIONS ====================
   const handleAddBlankPage = async () => {
     if (!pdfBytes) return;
     const pdfDoc = await PDFDocument.load(pdfBytes);
@@ -99,6 +102,7 @@ export default function EditPDF() {
   const handleZoomIn = () => setZoom(z => Math.min(3, z + 0.2));
   const handleZoomOut = () => setZoom(z => Math.max(0.5, z - 0.2));
 
+  // ==================== ANNOTATIONS ====================
   const handleAnnotationAdd = useCallback((annotation) => {
     const newPageAnns = [...(pageAnnotations[currentPage] || []), annotation];
     const newAnnotations = { ...pageAnnotations, [currentPage]: newPageAnns };
@@ -138,12 +142,53 @@ export default function EditPDF() {
     }
   };
 
+  // ==================== SAVE ====================
   const handleSave = async () => {
     if (!pdfBytes) return alert('No PDF loaded');
     try {
       const pdfDoc = await PDFDocument.load(pdfBytes);
-      // ... (full save code from previous messages - identical)
-      // [omitted for brevity but same as before]
+
+      for (let i = 1; i <= totalPages; i++) {
+        const anns = pageAnnotations[i] || [];
+        if (anns.length === 0) continue;
+
+        const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
+        const page = await pdf.getPage(i);
+        const viewport = page.getViewport({ scale: 2, rotation: rotations[i - 1] || 0 });
+
+        const canvas = document.createElement('canvas');
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const ctx = canvas.getContext('2d');
+        await page.render({ canvasContext: ctx, viewport }).promise;
+
+        anns.forEach((ann) => {
+          ctx.save();
+          ctx.strokeStyle = ann.color || '#000000';
+          ctx.lineWidth = (ann.brushSize || 5) * (2 / 1.5);
+          ctx.lineCap = 'round';
+          if (ann.type === 'highlight') ctx.globalAlpha = 0.35;
+
+          if (ann.points && ann.points.length > 1) {
+            ctx.beginPath();
+            ctx.moveTo(ann.points[0].x * (2 / 1.5), ann.points[0].y * (2 / 1.5));
+            ann.points.forEach((p) => ctx.lineTo(p.x * (2 / 1.5), p.y * (2 / 1.5)));
+            ctx.stroke();
+          } else if (ann.type === 'text') {
+            ctx.font = `${(ann.fontSize || 24) * (2 / 1.5)}px Arial`;
+            ctx.fillStyle = ann.color;
+            ctx.fillText(ann.text, ann.x * (2 / 1.5), ann.y * (2 / 1.5));
+          }
+          ctx.restore();
+        });
+
+        const pngBytes = await fetch(canvas.toDataURL('image/png')).then(r => r.arrayBuffer());
+        const pngImage = await pdfDoc.embedPng(pngBytes);
+        const pdfPage = pdfDoc.getPage(i - 1);
+        const { width, height } = pdfPage.getSize();
+        pdfPage.drawImage(pngImage, { x: 0, y: 0, width, height });
+      }
+
       const finalBytes = await pdfDoc.save();
       const blob = new Blob([finalBytes], { type: 'application/pdf' });
       const url = URL.createObjectURL(blob);
@@ -154,7 +199,7 @@ export default function EditPDF() {
       URL.revokeObjectURL(url);
       alert('✅ PDF saved successfully!');
     } catch (err) {
-      console.error(err);
+      console.error('Save failed:', err);
       alert('Save failed — check console');
     }
   };
@@ -163,11 +208,18 @@ export default function EditPDF() {
   const handleBack = () => window.location.href = createPageUrl('Home');
 
   if (!pdfBytes) {
-    return <div className="h-screen flex items-center justify-center bg-zinc-950 text-white text-3xl">No PDF loaded — go back to Home</div>;
+    return (
+      <div className="h-screen flex items-center justify-center bg-zinc-950 text-white text-3xl">
+        No PDF loaded — go back to Home
+      </div>
+    );
   }
 
   return (
-    <div className="h-screen flex flex-col bg-zinc-950 overflow-hidden relative" onMouseMove={handleMouseMove}>
+    <div
+      className="h-screen flex flex-col bg-zinc-950 overflow-hidden relative"
+      onMouseMove={handleMouseMove}
+    >
       <div className={`fixed inset-x-0 top-0 z-50 transition-transform duration-300 ${showToolbar ? 'translate-y-0' : '-translate-y-full'}`}>
         <EditToolbar
           currentTool={currentTool} onToolChange={setCurrentTool}
