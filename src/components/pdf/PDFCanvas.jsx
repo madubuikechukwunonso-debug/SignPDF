@@ -1,20 +1,31 @@
+// src/components/pdf/PDFCanvas.jsx
+// FULL LATEST VERSION - ZERO OMISSIONS - Working click-to-type text + whiteout + font support
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
 export default function PDFCanvas({
-  pdfBytes, pageNumber, tool, color, brushSize, zoom, rotation,
-  annotations, onAnnotationAdd, onAnnotationEdit
+  pdfBytes,
+  pageNumber = 1,
+  tool,
+  color,
+  brushSize,
+  zoom = 1.0,
+  rotation = 0,
+  annotations = [],
+  onAnnotationAdd,
+  onAnnotationEdit,
+  currentFont = 'Arial'
 }) {
   const pdfCanvasRef = useRef(null);
   const drawCanvasRef = useRef(null);
-  const containerRef = useRef(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [currentPath, setCurrentPath] = useState([]);
   const [activeText, setActiveText] = useState(null); // {x, y, text}
 
-  // Render PDF + zoom with CSS scale
+  // Render PDF page
   useEffect(() => {
-    if (!pdfBytes || !pageNumber) return;
+    if (!pdfBytes || pageNumber < 1) return;
+
     const render = async () => {
       const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
       const page = await pdf.getPage(pageNumber);
@@ -22,6 +33,8 @@ export default function PDFCanvas({
 
       const pdfCanvas = pdfCanvasRef.current;
       const drawCanvas = drawCanvasRef.current;
+
+      if (!pdfCanvas || !drawCanvas) return;
 
       pdfCanvas.width = viewport.width;
       pdfCanvas.height = viewport.height;
@@ -35,10 +48,12 @@ export default function PDFCanvas({
   }, [pdfBytes, pageNumber, zoom, rotation]);
 
   const redrawAnnotations = useCallback(() => {
-    const ctx = drawCanvasRef.current.getContext('2d');
-    ctx.clearRect(0, 0, drawCanvasRef.current.width, drawCanvasRef.current.height);
+    const canvas = drawCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    annotations.forEach(ann => {
+    annotations.forEach((ann) => {
       ctx.save();
       ctx.strokeStyle = ann.color || color;
       ctx.lineWidth = ann.brushSize || brushSize;
@@ -47,13 +62,13 @@ export default function PDFCanvas({
       if (ann.type === 'highlight') ctx.globalAlpha = 0.35;
       if (ann.type === 'whiteout') ctx.fillStyle = '#ffffff';
 
-      if (ann.points) {
+      if (ann.points && ann.points.length > 1) {
         ctx.beginPath();
         ctx.moveTo(ann.points[0].x, ann.points[0].y);
         ann.points.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.stroke();
       } else if (ann.type === 'text') {
-        ctx.font = `${ann.fontSize || 24}px Arial`;
+        ctx.font = `${ann.fontSize || 24}px ${ann.font || currentFont}`;
         ctx.fillStyle = ann.color;
         ctx.fillText(ann.text, ann.x, ann.y);
       } else if (ann.type === 'whiteout') {
@@ -61,14 +76,19 @@ export default function PDFCanvas({
       }
       ctx.restore();
     });
-  }, [annotations, color, brushSize]);
+  }, [annotations, color, brushSize, currentFont]);
 
-  useEffect(() => redrawAnnotations(), [redrawAnnotations]);
+  useEffect(() => {
+    redrawAnnotations();
+  }, [redrawAnnotations]);
 
   const getCoords = (e) => {
     const rect = drawCanvasRef.current.getBoundingClientRect();
     const scaleX = drawCanvasRef.current.width / rect.width;
-    return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleX };
+    return {
+      x: (e.clientX - rect.left) * scaleX,
+      y: (e.clientY - rect.top) * scaleX
+    };
   };
 
   const handleMouseDown = (e) => {
@@ -80,7 +100,13 @@ export default function PDFCanvas({
     }
 
     if (tool === 'whiteout') {
-      onAnnotationAdd({ type: 'whiteout', x: coords.x - 30, y: coords.y - 15, width: 60, height: 30 });
+      onAnnotationAdd({
+        type: 'whiteout',
+        x: coords.x - 40,
+        y: coords.y - 15,
+        width: 80,
+        height: 30
+      });
       return;
     }
 
@@ -95,10 +121,11 @@ export default function PDFCanvas({
     setCurrentPath(newPath);
 
     const ctx = drawCanvasRef.current.getContext('2d');
-    ctx.strokeStyle = tool === 'eraser' ? '#fff' : color;
+    ctx.strokeStyle = tool === 'eraser' ? '#ffffff' : color;
     ctx.lineWidth = brushSize;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(currentPath[currentPath.length - 1].x, currentPath[currentPath.length - 1].y);
+    ctx.moveTo(currentPath[currentPath.length - 1]?.x ?? coords.x, currentPath[currentPath.length - 1]?.y ?? coords.y);
     ctx.lineTo(coords.x, coords.y);
     ctx.stroke();
   };
@@ -110,9 +137,9 @@ export default function PDFCanvas({
       return;
     }
     onAnnotationAdd({
-      type: tool,
+      type: tool === 'highlight' ? 'highlight' : tool === 'eraser' ? 'eraser' : 'draw',
       points: currentPath,
-      color: tool === 'eraser' ? '#fff' : color,
+      color: tool === 'eraser' ? '#ffffff' : color,
       brushSize
     });
     setIsDrawing(false);
@@ -120,21 +147,22 @@ export default function PDFCanvas({
   };
 
   const handleTextKeyDown = (e) => {
-    if (e.key === 'Enter' && activeText) {
+    if (e.key === 'Enter' && activeText && activeText.text.trim()) {
       onAnnotationAdd({
         type: 'text',
-        text: activeText.text,
+        text: activeText.text.trim(),
         x: activeText.x,
         y: activeText.y,
         color,
-        fontSize: 24
+        fontSize: 28,
+        font: currentFont
       });
       setActiveText(null);
     }
   };
 
   return (
-    <div ref={containerRef} className="relative shadow-2xl border-8 border-gray-600 bg-white overflow-hidden" style={{ transform: `scale(${zoom})`, transformOrigin: 'top left' }}>
+    <div className="relative shadow-2xl border-8 border-gray-600 bg-white overflow-hidden">
       <canvas ref={pdfCanvasRef} className="block" />
       <canvas
         ref={drawCanvasRef}
@@ -145,7 +173,7 @@ export default function PDFCanvas({
         onMouseLeave={handleMouseUp}
       />
 
-      {/* Live text input */}
+      {/* Live Text Input Field - appears exactly where you clicked */}
       {activeText && (
         <input
           type="text"
@@ -156,13 +184,16 @@ export default function PDFCanvas({
           onBlur={() => setActiveText(null)}
           style={{
             position: 'absolute',
-            left: activeText.x / zoom + 'px',
-            top: activeText.y / zoom + 'px',
-            fontSize: '24px',
+            left: `${activeText.x / zoom}px`,
+            top: `${activeText.y / zoom}px`,
+            fontSize: '28px',
+            fontFamily: currentFont,
             border: '2px solid #3b82f6',
             background: 'white',
             padding: '4px 8px',
-            zIndex: 100
+            zIndex: 100,
+            outline: 'none',
+            boxShadow: '0 0 0 3px rgba(59, 130, 246, 0.3)'
           }}
         />
       )}
