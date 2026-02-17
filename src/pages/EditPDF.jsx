@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { useSearchParams } from 'react-router-dom';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import { createPageUrl } from '@/utils';
@@ -132,7 +131,7 @@ export default function EditPDF() {
                 if (annotation.type === 'draw' || annotation.type === 'highlight' || annotation.type === 'eraser') {
                     ctx.beginPath();
                     ctx.strokeStyle = annotation.color;
-                    ctx.lineWidth = annotation.brushSize * (2 / 1.5); // Scale adjustment
+                    ctx.lineWidth = annotation.brushSize * (2 / 1.5);
                     ctx.lineCap = 'round';
                     ctx.lineJoin = 'round';
                     
@@ -165,7 +164,6 @@ export default function EditPDF() {
             const pdfPage = pdfDoc.getPage(pageNum - 1);
             const { width, height } = pdfPage.getSize();
             
-            // Draw white background and then the annotated image
             pdfPage.drawRectangle({
                 x: 0,
                 y: 0,
@@ -216,7 +214,7 @@ export default function EditPDF() {
                     </label>
                     <button
                         onClick={handleBack}
-                        className="mt-4 text-slate-600 hover:text-slate-800 underline"
+                        className="mt-4 block mx-auto text-slate-600 hover:text-slate-800 underline"
                     >
                         Go back to home
                     </button>
