@@ -1,56 +1,34 @@
-import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useRef, useEffect, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
-const PDFCanvas = forwardRef(({ 
-    pdfBytes, 
-    pageNumber, 
-    tool, 
-    color, 
+const PDFCanvas = forwardRef(({
+    pdfBytes,
+    pageNumber,
+    tool,
+    color,
     brushSize,
     annotations,
-    onAnnotationAdd 
+    onAnnotationAdd
 }, ref) => {
-    const containerRef = useRef(null);
     const pdfCanvasRef = useRef(null);
     const drawCanvasRef = useRef(null);
     const [isDrawing, setIsDrawing] = useState(false);
     const [currentPath, setCurrentPath] = useState([]);
-    const [scale, setScale] = useState(1);
-    const [pdfPage, setPdfPage] = useState(null);
 
-    useImperativeHandle(ref, () => ({
-        getAnnotations: () => annotations,
-        exportCanvas: () => {
-            const canvas = document.createElement('canvas');
-            const pdfCanvas = pdfCanvasRef.current;
-            const drawCanvas = drawCanvasRef.current;
-            
-            canvas.width = pdfCanvas.width;
-            canvas.height = pdfCanvas.height;
-            const ctx = canvas.getContext('2d');
-            
-            ctx.drawImage(pdfCanvas, 0, 0);
-            ctx.drawImage(drawCanvas, 0, 0);
-            
-            return canvas;
-        }
-    }));
+    useImperativeHandle(ref, () => ({})); // optional
 
-    // Load and render PDF page
+    // Render PDF page
     useEffect(() => {
         if (!pdfBytes || !pageNumber) return;
 
         const loadPage = async () => {
             const pdf = await pdfjsLib.getDocument({ data: pdfBytes }).promise;
             const page = await pdf.getPage(pageNumber);
-            setPdfPage(page);
-
-            const viewport = page.getViewport({ scale: 1.5 });
-            setScale(1.5);
+            const viewport = page.getViewport({ scale: 1.8 });
 
             const pdfCanvas = pdfCanvasRef.current;
             const drawCanvas = drawCanvasRef.current;
-            
+
             pdfCanvas.width = viewport.width;
             pdfCanvas.height = viewport.height;
             drawCanvas.width = viewport.width;
@@ -60,170 +38,94 @@ const PDFCanvas = forwardRef(({
                 canvasContext: pdfCanvas.getContext('2d'),
                 viewport
             }).promise;
-
-            // Redraw existing annotations
-            redrawAnnotations();
         };
 
         loadPage();
     }, [pdfBytes, pageNumber]);
 
-    // Redraw annotations when they change
+    // Redraw saved annotations
     useEffect(() => {
-        redrawAnnotations();
-    }, [annotations]);
-
-    const redrawAnnotations = () => {
         const canvas = drawCanvasRef.current;
         if (!canvas) return;
-        
         const ctx = canvas.getContext('2d');
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-        annotations.forEach(annotation => {
-            if (annotation.type === 'draw' || annotation.type === 'highlight') {
-                ctx.beginPath();
-                ctx.strokeStyle = annotation.color;
-                ctx.lineWidth = annotation.brushSize;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                if (annotation.type === 'highlight') {
-                    ctx.globalAlpha = 0.3;
-                }
+        annotations.forEach(ann => {
+            ctx.strokeStyle = ann.color;
+            ctx.lineWidth = ann.brushSize || brushSize;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
 
-                const points = annotation.points;
-                if (points.length > 0) {
-                    ctx.moveTo(points[0].x, points[0].y);
-                    for (let i = 1; i < points.length; i++) {
-                        ctx.lineTo(points[i].x, points[i].y);
-                    }
-                    ctx.stroke();
-                }
-                ctx.globalAlpha = 1;
-            } else if (annotation.type === 'text') {
-                ctx.font = `${annotation.fontSize || 16}px Arial`;
-                ctx.fillStyle = annotation.color;
-                ctx.fillText(annotation.text, annotation.x, annotation.y);
-            } else if (annotation.type === 'eraser') {
-                // Eraser creates white strokes
+            if (ann.type === 'highlight') ctx.globalAlpha = 0.4;
+
+            if (ann.points && ann.points.length > 1) {
                 ctx.beginPath();
-                ctx.strokeStyle = '#FFFFFF';
-                ctx.lineWidth = annotation.brushSize;
-                ctx.lineCap = 'round';
-                ctx.lineJoin = 'round';
-                
-                const points = annotation.points;
-                if (points.length > 0) {
-                    ctx.moveTo(points[0].x, points[0].y);
-                    for (let i = 1; i < points.length; i++) {
-                        ctx.lineTo(points[i].x, points[i].y);
-                    }
-                    ctx.stroke();
+                ctx.moveTo(ann.points[0].x, ann.points[0].y);
+                for (let i = 1; i < ann.points.length; i++) {
+                    ctx.lineTo(ann.points[i].x, ann.points[i].y);
                 }
+                ctx.stroke();
             }
+            ctx.globalAlpha = 1;
         });
-    };
+    }, [annotations, brushSize]);
 
-    const getCoordinates = (e) => {
-        const canvas = drawCanvasRef.current;
-        const rect = canvas.getBoundingClientRect();
-        const scaleX = canvas.width / rect.width;
-        const scaleY = canvas.height / rect.height;
-        
+    const getCoords = (e) => {
+        const rect = drawCanvasRef.current.getBoundingClientRect();
+        const scaleX = drawCanvasRef.current.width / rect.width;
         return {
             x: (e.clientX - rect.left) * scaleX,
-            y: (e.clientY - rect.top) * scaleY
+            y: (e.clientY - rect.top) * scaleX
         };
     };
 
     const handleMouseDown = (e) => {
         if (tool === 'select') return;
-        
-        if (tool === 'text') {
-            const coords = getCoordinates(e);
-            const text = prompt('Enter text:');
-            if (text) {
-                onAnnotationAdd({
-                    type: 'text',
-                    text,
-                    x: coords.x,
-                    y: coords.y,
-                    color,
-                    fontSize: brushSize * 2
-                });
-            }
-            return;
-        }
-
         setIsDrawing(true);
-        const coords = getCoordinates(e);
+        const coords = getCoords(e);
         setCurrentPath([coords]);
     };
 
     const handleMouseMove = (e) => {
-        if (!isDrawing || tool === 'select' || tool === 'text') return;
-
-        const coords = getCoordinates(e);
+        if (!isDrawing) return;
+        const coords = getCoords(e);
         const newPath = [...currentPath, coords];
         setCurrentPath(newPath);
 
-        // Draw current stroke
         const ctx = drawCanvasRef.current.getContext('2d');
-        ctx.beginPath();
-        ctx.strokeStyle = tool === 'eraser' ? '#FFFFFF' : color;
+        ctx.strokeStyle = color;
         ctx.lineWidth = brushSize;
         ctx.lineCap = 'round';
-        ctx.lineJoin = 'round';
-        
-        if (tool === 'highlight') {
-            ctx.globalAlpha = 0.3;
-        }
-
-        if (currentPath.length > 0) {
-            const lastPoint = currentPath[currentPath.length - 1];
-            ctx.moveTo(lastPoint.x, lastPoint.y);
-            ctx.lineTo(coords.x, coords.y);
-            ctx.stroke();
-        }
-        ctx.globalAlpha = 1;
+        ctx.beginPath();
+        ctx.moveTo(currentPath[currentPath.length - 1]?.x || coords.x, currentPath[currentPath.length - 1]?.y || coords.y);
+        ctx.lineTo(coords.x, coords.y);
+        ctx.stroke();
     };
 
-    const handleMouseUp = () => {
-        if (!isDrawing) return;
+    const handleMouseUp = useCallback(() => {
+        if (!isDrawing || currentPath.length < 2) {
+            setIsDrawing(false);
+            setCurrentPath([]);
+            return;
+        }
+
+        onAnnotationAdd({
+            type: tool,
+            points: currentPath,
+            color,
+            brushSize
+        });
+
         setIsDrawing(false);
-
-        if (currentPath.length > 1) {
-            onAnnotationAdd({
-                type: tool === 'highlight' ? 'highlight' : tool === 'eraser' ? 'eraser' : 'draw',
-                points: currentPath,
-                color: tool === 'eraser' ? '#FFFFFF' : color,
-                brushSize
-            });
-        }
         setCurrentPath([]);
-    };
-
-    const getCursor = () => {
-        switch (tool) {
-            case 'draw': return 'crosshair';
-            case 'highlight': return 'crosshair';
-            case 'eraser': return 'crosshair';
-            case 'text': return 'text';
-            default: return 'default';
-        }
-    };
+    }, [isDrawing, currentPath, tool, color, brushSize, onAnnotationAdd]);
 
     return (
-        <div ref={containerRef} className="relative inline-block">
-            <canvas
-                ref={pdfCanvasRef}
-                className="absolute top-0 left-0"
-            />
+        <div className="relative inline-block border-4 border-gray-300 shadow-2xl bg-white overflow-hidden">
+            <canvas ref={pdfCanvasRef} className="block" />
             <canvas
                 ref={drawCanvasRef}
-                className="relative"
-                style={{ cursor: getCursor() }}
+                className="absolute top-0 left-0 pointer-events-auto"
                 onMouseDown={handleMouseDown}
                 onMouseMove={handleMouseMove}
                 onMouseUp={handleMouseUp}
