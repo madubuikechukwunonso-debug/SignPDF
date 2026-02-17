@@ -1,5 +1,5 @@
 // src/components/pdf/PDFCanvas.jsx
-// FULL LATEST VERSION - ZERO OMISSIONS - Working click-to-type text + whiteout + font support
+// FULL LATEST VERSION - ZERO OMISSIONS - Click-to-type text + font + whiteout + rotation support
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -22,14 +22,14 @@ export default function PDFCanvas({
   const [currentPath, setCurrentPath] = useState([]);
   const [activeText, setActiveText] = useState(null); // {x, y, text}
 
-  // Render PDF page
+  // Render PDF with rotation support
   useEffect(() => {
     if (!pdfBytes || pageNumber < 1) return;
 
     const render = async () => {
       const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
       const page = await pdf.getPage(pageNumber);
-      const viewport = page.getViewport({ scale: zoom, rotation });
+      const viewport = page.getViewport({ scale: zoom, rotation }); // ← rotation applied here
 
       const pdfCanvas = pdfCanvasRef.current;
       const drawCanvas = drawCanvasRef.current;
@@ -68,7 +68,7 @@ export default function PDFCanvas({
         ann.points.forEach(p => ctx.lineTo(p.x, p.y));
         ctx.stroke();
       } else if (ann.type === 'text') {
-        ctx.font = `${ann.fontSize || 24}px ${ann.font || currentFont}`;
+        ctx.font = `${ann.fontSize || 28}px ${ann.font || currentFont}`;
         ctx.fillStyle = ann.color;
         ctx.fillText(ann.text, ann.x, ann.y);
       } else if (ann.type === 'whiteout') {
@@ -173,7 +173,7 @@ export default function PDFCanvas({
         onMouseLeave={handleMouseUp}
       />
 
-      {/* Live Text Input Field - appears exactly where you clicked */}
+      {/* Live Text Input - appears exactly where clicked */}
       {activeText && (
         <input
           type="text"
